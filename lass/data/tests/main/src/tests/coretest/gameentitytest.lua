@@ -252,7 +252,11 @@ function GameEntityTest:testGameObjectMoveToGlobal(scene)
 
 end
 
+<<<<<<< HEAD
 function GameEntityTest:testGameEntityResizing(scene)
+=======
+function GameEntityTest:testResize(scene)
+>>>>>>> ec6678b... Issue #46: removed AllowNegativeSize option from GameEntity:resize() and updated tests on it to assert that the option no longer exists
 
     --[[setup]]
     local object = self:createEntity(scene, "test")
@@ -274,39 +278,34 @@ function GameEntityTest:testGameEntityResizing(scene)
     assertEqual(object.transform.size, geometry.Vector3(9, 11, 14))
     assertEqual(object.globalSize, geometry.Vector3(9, 11, 14))
 
+    object:resize(-2, -4, -7)
+    assertEqual(object.transform.size, geometry.Vector3(7, 7, 7))
+    assertEqual(object.globalSize, geometry.Vector3(7, 7, 7))
 
-    --[[testing useNegative]]
-    object:resize(-100, -100, -100, false)
-    assertEqual(object.transform.size, geometry.Vector3(0, 0, 0))
-    assertEqual(object.globalSize, geometry.Vector3(0, 0, 0))
+    object:resize(-6, -5, -4)
+    assertEqual(object.transform.size, geometry.Vector3(1, 2, 3))
+    assertEqual(object.globalSize, geometry.Vector3(1, 2, 3))
 
-    object:resize(-2, -4, -7, true)
-    assertEqual(object.transform.size, geometry.Vector3(-2, -4, -7))
-    assertEqual(object.globalSize, geometry.Vector3(-2, -4, -7))
+    object:resize(0, -1, -2)
+    assertEqual(object.transform.size, geometry.Vector3(1, 1, 1))
+    assertEqual(object.globalSize, geometry.Vector3(1, 1, 1))
 
-    object:resize(-2, -4, -7, false)
-    assertEqual(object.transform.size, geometry.Vector3(0, 0, 0))
-    assertEqual(object.globalSize, geometry.Vector3(0, 0, 0))
-
-    object:resize(-2, -4, -7, true)
-    object:resize(-2, -4, -7, true)
-    assertEqual(object.transform.size, geometry.Vector3(-4, -8, -14))
-    assertEqual(object.globalSize, geometry.Vector3(-4, -8, -14))
-
-end
-
+<<<<<<< HEAD
 function GameEntityTest:testGameEntityChildResizing(scene)
 
     --[[setup]]
     local object = self:createEntity(scene, "test")
     local child = self:createEntity(scene, "test child")
     object:addChild(child)
+=======
+
+    --[[resizing with a child]]
+    local child = self:createEntity(scene, "test child", nil, object)
+>>>>>>> 22a3374... Issue #46: refactored testChildResizing into testResize, and added some more resizing tests using negative parameters, with above-zero results
 
     assertEqual(child.transform.size, geometry.Vector3(1, 1, 1))
     assertEqual(child.globalSize, geometry.Vector3(1, 1, 1))
 
-
-    --[[GameEntity.resize]]
     object:resize(1, 1, 1)
     assertEqual(child.transform.size, geometry.Vector3(1, 1, 1))
     assertEqual(child.globalSize, geometry.Vector3(2, 2, 2))
@@ -319,37 +318,22 @@ function GameEntityTest:testGameEntityChildResizing(scene)
     assertEqual(child.transform.size, geometry.Vector3(4, 5, 6))
     assertEqual(child.globalSize, geometry.Vector3(8, 10, 12))
 
-
-    --[[testing useNegative]]
-    object:resize(-100, -100, -100, false)
+    object:resize(-1, -1, -1)
     assertEqual(child.transform.size, geometry.Vector3(4, 5, 6))
-    assertEqual(child.globalSize, geometry.Vector3(0, 0, 0))
+    assertEqual(child.globalSize, geometry.Vector3(4, 5, 6))
 
-    child:resize(-100, -100, -100, false)
-    assertEqual(child.transform.size, geometry.Vector3(0, 0, 0))
-    assertEqual(child.globalSize, geometry.Vector3(0, 0, 0))
-
-    object:resize(-1, -2, -3, true)
-    assertEqual(child.transform.size, geometry.Vector3(0, 0, 0))
-    assertEqual(child.globalSize, geometry.Vector3(0, 0, 0))
-
-    child:resize(1, 1, 1, false)
+    child:resize(-3, -4, -5)
     assertEqual(child.transform.size, geometry.Vector3(1, 1, 1))
-    assertEqual(child.globalSize, geometry.Vector3(-1, -2, -3))
+    assertEqual(child.globalSize, geometry.Vector3(1, 1, 1))
 
-    child:resize(-3, -3, -3, true)
-    assertEqual(child.transform.size, geometry.Vector3(-2, -2, -2))
-    assertEqual(child.globalSize, geometry.Vector3(2, 4, 6))
 
-    child:resize(-2, -2, -2, false)
-    assertEqual(child.transform.size, geometry.Vector3(0, 0, 0))
-    assertEqual(child.globalSize, geometry.Vector3(0, 0, 0))
+    --[[testing that allowNegativeSize was removed]]
+    local success = pcall(function() object:resize(-100, -100, -100, false) end)
+    assertEqual(success, false)
 
-    child:resize(-2, -2, -2, true)
-    child:resize(-2, -2, -2, true)
-    assertEqual(child.transform.size, geometry.Vector3(-4, -4, -4))
-    assertEqual(child.globalSize, geometry.Vector3(4, 8, 12))
-
+    -- test on child this time, since `object` was made useless by the above test
+    success = pcall(function() child:resize(-100, -100, -100, true) end)
+    assertEqual(success, false)
 
 end
 
