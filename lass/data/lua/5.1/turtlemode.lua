@@ -277,21 +277,77 @@ function Fail:__newindex(key, value)
 	end
 end
 
+local Fixtures = class(nil, function(self)
+	self._fixtureNames = {}
+end)
+
+function Fixtures:__newindex(key, value)
+
+	if type(value) == "function" then
+		rawset(self, key, value)
+		self._fixtureNames[#self._fixtureNames + 1] = key
+	else
+		rawset(self, key, value)
+	end
+end
+
 --[[
 public
 ]]
 
-m.testModule = class(nil, function(self)
+m.testModule = class(nil, function(self, super)
 
-	-- self.fail = Fail(self)
-	self.skip = Skip(self)
-	self.fail = Fail(self)
 	self._testNames = {}
+
+	if not super then
+		self.skip = Skip(self)
+		self.fail = Fail(self)
+		self.fixtures = Fixtures()
+		return
+	elseif type(super) == "string" then
+		super = require(super)
+	elseif type(super) ~= "table" then
+		error("super testModule must be table or name of module")
+	end
+
+	for i, testName in ipairs(super._testNames) do
+		self[testName] = super[testName]
+	end
+
+	for k, v in pairs(super) do
+
+		-- if we copy skip and fail by reference instead of by value, then
+		-- marking new tests as "skip" or "fail" won't work
+
+		if k == "skip" then
+
+			self.skip = Skip(self)
+			for k2, v2 in pairs(v) do
+				if k2 ~= "_testModule" then
+					-- we use super[k2] instead of v2 because v2 doesn't
+					-- actually point to the function
+					self.skip[k2] = super[k2]
+				end
+			end
+
+		elseif k == "fail" then
+
+			self.fail = Fail(self)
+			for k2, v2 in pairs(v) do
+				if k2 ~= "_testModule" then
+					self.fail[k2] = super[k2]
+				end
+			end
+
+		elseif not self[k] then
+			self[k] = v
+		end
+	end
 end)
 
 function m.testModule:__newindex(key, value)
 
-	if startsWith(key, "test") or endsWith(key, "test") then
+	if type(value) == "function" and (startsWith(key, "test") or endsWith(key, "test")) then
 		self._testNames[#self._testNames + 1] = key
 	end
 	rawset(self, key, value)
@@ -301,8 +357,33 @@ function m.run(scene)
 
 	local loadedModules, loadedModuleNames = {}, {}
 	for i, v in ipairs(gatherTestFiles("tests")) do
-		loadedModules[#loadedModules + 1] = love.filesystem.load(v)()
-		loadedModuleNames[#loadedModuleNames + 1] = v
+
+		-- local result, mod = xpcall(love.filesystem.load, debug.traceback, v)
+		-- if result then
+		-- 	result, mod = pcall(mod)
+		-- else
+		-- 	debug.log(mod)
+		-- 	return
+		-- end
+
+		local r, modPreExec = xpcall(love.filesystem.load, debug.traceback, v)
+		if not r then
+			print(modPreExec)
+			return
+		end
+
+		if modPreExec then
+			loadedModules[#loadedModules + 1] = modPreExec()
+			loadedModuleNames[#loadedModuleNames + 1] = v
+		else
+			debug.log(modPreExec)
+			return
+		end
+	end
+
+	local function _traceback(m, ...)
+		-- return debug.traceback(m, 4)
+		return debug.traceback(m, ...)
 	end
 
 	local resultsTotal = {
@@ -331,9 +412,11 @@ function m.run(scene)
 			unexpectedFailures = 0,
 		}
 
-		for j, testName in ipairs(loadedModule._testNames) do
+		if loadedModule.setup then
+			loadedModule:setup()
+		end
 
-			scene:init()
+		for j, testName in ipairs(loadedModule._testNames) do
 
 			-- skip this test if necessary
 
@@ -343,7 +426,7 @@ function m.run(scene)
 				if type(skip) == "string" then
 					print(string.format("Skipping %s: %s", testName, skip))
 				else
-					print("Skipping " .. testname)
+					print("Skipping " .. testName)
 				end
 
 				results.skips = results.skips + 1
@@ -351,8 +434,16 @@ function m.run(scene)
 			end
 
 			-- else run the test
+
 			local fail = loadedModule.fail[testName]
-			local r, d = xpcall(loadedModule[testName], debug.traceback, scene)
+
+			local fixtures = {}
+			for i, fixtureName in ipairs(loadedModule.fixtures._fixtureNames) do
+				-- print(fixtureName, loadedModule.fixtures[fixtureName])
+				fixtures[i] = loadedModule.fixtures[fixtureName](loadedModule)
+			end
+
+			local r, d = xpcall(loadedModule[testName], _traceback, loadedModule, unpack(fixtures))
 
 			if fail then
 				results.expectedFailures = results.expectedFailures + 1
@@ -383,6 +474,10 @@ function m.run(scene)
 			results.testsRun = results.testsRun + 1
 
 			::continue::
+		end
+
+		if loadedModule.teardown then
+			loadedModule:teardown()
 		end
 
 		printTestSummary(results)
@@ -434,7 +529,7 @@ end
 
 
 ---exp == got.
-function m.assertEqual(exp, got, tol, msg)
+function m.assertEqual(got, exp, tol, msg)
 
 	tol, msg = tol_or_msg(tol, msg)
 
@@ -453,7 +548,7 @@ function m.assertEqual(exp, got, tol, msg)
 end
 
 ---exp ~= got.
-function m.assertNotEqual(exp, got, msg)
+function m.assertNotEqual(got, exp, msg)
 	wraptest(exp ~= got,
 		msg,
 		"Expected something other than " .. tostring(exp)
@@ -461,7 +556,7 @@ function m.assertNotEqual(exp, got, msg)
 end
 
 ---val > lim.
-function m.assertGreater(lim, val, msg)
+function m.assertGreater(val, lim, msg)
 	wraptest(val > lim,
 		msg,
 		string.format("Expected a value > %s, got %s",
@@ -470,7 +565,7 @@ function m.assertGreater(lim, val, msg)
 end
 
 ---val >= lim.
-function m.assertGreaterOrEqual(lim, val, msg)
+function m.assertGreaterOrEqual(val, lim, msg)
 	wraptest(
 		val >= lim,
 		msg,
@@ -480,7 +575,7 @@ function m.assertGreaterOrEqual(lim, val, msg)
 end
 
 ---val < lim.
-function m.assertLess(lim, val, msg)
+function m.assertLess(val, lim, msg)
 	wraptest(
 		val < lim,
 		msg,
@@ -490,7 +585,7 @@ function m.assertLess(lim, val, msg)
 end
 
 ---val <= lim.
-function m.assertLessOrEqual(lim, val, msg)
+function m.assertLessOrEqual(val, lim, msg)
 	wraptest(
 		val <= lim,
 		msg,
@@ -500,7 +595,7 @@ function m.assertLessOrEqual(lim, val, msg)
 end
 
 ---#val == len.
-function m.assertLen(len, val, msg)
+function m.assertLen(val, len, msg)
 	wraptest(
 		#val == len,
 		msg,
@@ -510,7 +605,7 @@ function m.assertLen(len, val, msg)
 end
 
 ---#val ~= len.
-function m.assertNotLen(len, val, msg)
+function m.assertNotLen(val, len, msg)
 	wraptest(
 		#val ~= len,
 		msg,
@@ -519,7 +614,7 @@ function m.assertNotLen(len, val, msg)
 end
 
 ---Test that the string s matches the pattern exp.
-function m.assertMatch(pat, s, msg)
+function m.assertMatch(s, pat, msg)
 	s = tostring(s)
 	wraptest(
 		type(s) == "string" and s:match(pat),
@@ -533,7 +628,7 @@ function m.assertMatch(pat, s, msg)
 end
 
 ---Test that the string s doesn't match the pattern exp.
-function m.assertNotMatch(pat, s, msg)
+function m.assertNotMatch(s, pat, msg)
 	wraptest(
 		type(s) ~= "string" or not s:match(pat),
 		msg,
@@ -668,7 +763,7 @@ function m.assertNotUserdata(val, msg)
 end
 
 ---Test that a value has the expected metatable.
-function m.assertMetatable(exp, val, msg)
+function m.assertMetatable(val, exp, msg)
 	local mt = getmetatable(val)
 	wraptest(
 		mt == exp,
@@ -678,7 +773,7 @@ function m.assertMetatable(exp, val, msg)
 end
 
 ---Test that a value does not have a given metatable.
-function m.assertNotMetatable(exp, val, msg)
+function m.assertNotMetatable(val, exp, msg)
 	local mt = getmetatable(val)
 	wraptest(
 		mt ~= exp,

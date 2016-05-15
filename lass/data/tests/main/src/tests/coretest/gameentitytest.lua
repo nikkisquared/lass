@@ -1,7 +1,11 @@
 local lass = require("lass")
 local geometry = require("lass.geometry")
 local turtlemode = require("turtlemode")
-local assertLen, assertEqual = turtlemode.assertLen, turtlemode.assertEqual
+local assertLen, assertEqual, assertNotEqual =
+    turtlemode.assertLen,
+    turtlemode.assertEqual,
+    turtlemode.assertNotEqual
+local helpers = require("tests.coretest.helpers")
 
 local GameEntityTest = turtlemode.testModule()
 
@@ -11,6 +15,26 @@ end
 
 --scene is actually nil in this case because there's no fixture for it.
 --however, subclasses like GameObjectTest may define one
+
+function GameEntityTest:testChildren(scene)
+
+    local object = self:createEntity(scene, "test")
+    local child = self:createEntity(scene, "test child", nil, object)
+    local grandchild = self:createEntity(scene, "test grandchild", nil, child)
+    local greatGrandchild = self:createEntity(scene, "test g-grandchild", nil, grandchild)
+
+    assertLen(object.children, 1)
+    assertEqual(helpers.numTreeNodes(object), 3)
+
+    assertLen(child.children, 1)
+    assertEqual(helpers.numTreeNodes(child), 2)
+
+    assertLen(grandchild.children, 1)
+    assertEqual(helpers.numTreeNodes(grandchild), 1)
+
+    assertLen(greatGrandchild.children, 0)
+    assertEqual(helpers.numTreeNodes(greatGrandchild), 0)
+end
 
 function GameEntityTest:testGlobalTransformGetters(scene)
 
@@ -24,9 +48,9 @@ function GameEntityTest:testGlobalTransformGetters(scene)
     local child = self:createEntity(
         scene,
         "test child",
-        geometry.Transform(geometry.Vector3(5, 15, 25), 180, geometry.Vector3(5, 6, 7))
+        geometry.Transform(geometry.Vector3(5, 15, 25), 180, geometry.Vector3(5, 6, 7)),
+        object
     )
-    object:addChild(child)
     
     local gt = child.globalTransform
     assertEqual(gt.position, child.globalPosition)
@@ -35,7 +59,7 @@ function GameEntityTest:testGlobalTransformGetters(scene)
 
 end
 
-function GameEntityTest:testGameEntityMove(scene)
+function GameEntityTest:testMove(scene)
 
     --[[setup]]
     local object = self:createEntity(scene, "test")
@@ -45,8 +69,7 @@ function GameEntityTest:testGameEntityMove(scene)
     assertEqual(object.globalPosition, geometry.Vector3(0, 0, 0),
         "default object global position is incorrect")
 
-    local child = self:createEntity(scene, "test child")
-    object:addChild(child)
+    local child = self:createEntity(scene, "test child", nil, object)
 
     assertEqual(object.transform.position, geometry.Vector3(0, 0, 0),
         "default child local position is incorrect")
@@ -78,13 +101,11 @@ function GameEntityTest:testGameEntityMove(scene)
 
 end
 
-function GameEntityTest:testGameEntityMoveTo(scene)
+function GameEntityTest:testMoveTo(scene)
 
     --[[setup]]
     local object = self:createEntity(scene, "test")
-    local child = self:createEntity(scene, "test child")
-    object:addChild(child)
-
+    local child = self:createEntity(scene, "test child", nil, object)
 
     --[[moving an object]]
     object:moveTo(-2, 10, 5)
@@ -110,15 +131,28 @@ function GameEntityTest:testGameEntityMoveTo(scene)
     assertEqual(child.transform.position, geometry.Vector3(0, 0, 0))
     assertEqual(child.globalPosition, geometry.Vector3(0, 0, 0))
 
+
+    --[[excluding the z parameter]]
+    object:moveTo(0, 0, 10)
+
+    object:moveTo(7, 8)
+    assertEqual(object.transform.position, geometry.Vector3(7, 8, 10))
+    assertEqual(object.globalPosition, geometry.Vector3(7, 8, 10))
+
+    -- using a table for x
+    object:moveTo({x = 2, y = 5})
+    assertEqual(object.transform.position, geometry.Vector3(2, 5, 10))
+    assertEqual(object.globalPosition, geometry.Vector3(2, 5, 10))
+
+
+
 end
 
-function GameEntityTest:testGameEntityMoveGlobal(scene)
+function GameEntityTest:testMoveGlobal(scene)
 
     --[[setup]]
     local object = self:createEntity(scene, "test")
-    local child = self:createEntity(scene, "test child")
-    object:addChild(child)
-
+    local child = self:createEntity(scene, "test child", nil, object)
 
     --[[moving an object]]
     object:moveGlobal(5, 5, 5)
@@ -154,55 +188,25 @@ function GameEntityTest:testGameEntityMoveGlobal(scene)
     assertEqual(child.transform.position, geometry.Vector3(-3, -7.5, 12))
     assertEqual(child.globalPosition, geometry.Vector3(10, 20, 30))
 
-    -- object:resize(-1.5, -1.5, -1.5)
-    -- object:rotateTo(90)
-    -- child:moveGlobal(-7, -13, -12)
-    -- assertEqual(child.transform.position, geometry.Vector3(-10, -1, 30))
-    -- assertEqual(child.globalPosition, geometry.Vector3(-3, 7, 18))
+    object:resize(-1.5, -1.5, -1.5) --size is now 0.5
+    object:rotateTo(90)
+    child:moveGlobal(-3.25, 0.5, 6)
+    assertEqual(child.transform.position, geometry.Vector3(-4, -14, 24))
+    assertEqual(child.globalPosition, geometry.Vector3(-3, 7, 18))
 
-    -- object:resize(0.5, 0.5, 0.5)
-    -- object:rotateTo(270)
-    -- child:moveToGlobal(0, 0, 0)
-    -- assertEqual(child.transform.position, geometry.Vector3(-4, -5, -6))
-    -- assertEqual(child.globalPosition, geometry.Vector3(0, 0, 0))
-
-
-    -- object:moveTo(1, 2, 3)
-    -- object:resize(1, 1, 1)
-    -- object:rotateTo(180)
-    -- -- this is just to help keep track
-    -- assertEqual(child.globalPosition, geometry.Vector3(1, 2, 3))
-
-    -- child:moveGlobal(4, 8, 12)
-    -- assertEqual(child.transform.position, geometry.Vector3(-2, -4, 6))
-    -- assertEqual(child.globalPosition, geometry.Vector3(5, 10, 15))
-
-    -- object:resize(-1.5, -1.5, -1.5)
-    -- object:rotateTo(90)
-    -- -- this is just to help keep track
-    -- assertEqual(child.globalPosition, geometry.Vector3(-1, 3, 6))
-
-    -- child:moveGlobal(-3, 5, 6)
-    -- assertEqual(child.transform.position, geometry.Vector3(-12, -10, 18))
-    -- assertEqual(child.globalPosition, geometry.Vector3(-4, 8, 12))
-
-    -- object:resize(0.5, 0.5, 0.5)
-    -- object:rotateTo(270)
-    -- -- this is just to help keep track
-    -- assertEqual(child.globalPosition, geometry.Vector3(11, -10, 21))
-
-    -- child:moveGlobal(-11, 10, -21)
-    -- assertEqual(child.transform.position, geometry.Vector3(-2, 1, -3))
-    -- assertEqual(child.globalPosition, geometry.Vector3(0, 0, 0))
+    object:resize(0.5, 0.5, 0.5) --size is now 1
+    object:rotateTo(270)
+    child:moveGlobal(-18, -1, -30)
+    assertEqual(child.transform.position, geometry.Vector3(-5, 4, -6))
+    assertEqual(child.globalPosition, geometry.Vector3(0, 0, 0))
 
 end
 
-function GameEntityTest:testGameObjectMoveToGlobal(scene)
+function GameEntityTest:testMoveToGlobal(scene)
 
     --[[setup]]
     local object = self:createEntity(scene, "test")
-    local child = self:createEntity(scene, "test child")
-    object:addChild(child)
+    local child = self:createEntity(scene, "test child", nil, object)
 
 
     --[[moving an object]]
@@ -252,11 +256,7 @@ function GameEntityTest:testGameObjectMoveToGlobal(scene)
 
 end
 
-<<<<<<< HEAD
-function GameEntityTest:testGameEntityResizing(scene)
-=======
-function GameEntityTest:testResize(scene)
->>>>>>> ec6678b... Issue #46: removed AllowNegativeSize option from GameEntity:resize() and updated tests on it to assert that the option no longer exists
+function GameEntityTest:testResizing(scene)
 
     --[[setup]]
     local object = self:createEntity(scene, "test")
@@ -290,22 +290,19 @@ function GameEntityTest:testResize(scene)
     assertEqual(object.transform.size, geometry.Vector3(1, 1, 1))
     assertEqual(object.globalSize, geometry.Vector3(1, 1, 1))
 
-<<<<<<< HEAD
-function GameEntityTest:testGameEntityChildResizing(scene)
+end
+
+function GameEntityTest:testChildResizing(scene)
 
     --[[setup]]
     local object = self:createEntity(scene, "test")
-    local child = self:createEntity(scene, "test child")
-    object:addChild(child)
-=======
-
-    --[[resizing with a child]]
     local child = self:createEntity(scene, "test child", nil, object)
->>>>>>> 22a3374... Issue #46: refactored testChildResizing into testResize, and added some more resizing tests using negative parameters, with above-zero results
 
     assertEqual(child.transform.size, geometry.Vector3(1, 1, 1))
     assertEqual(child.globalSize, geometry.Vector3(1, 1, 1))
 
+
+    --[[GameEntity.resize]]
     object:resize(1, 1, 1)
     assertEqual(child.transform.size, geometry.Vector3(1, 1, 1))
     assertEqual(child.globalSize, geometry.Vector3(2, 2, 2))
@@ -337,7 +334,7 @@ function GameEntityTest:testGameEntityChildResizing(scene)
 
 end
 
-function GameEntityTest:testGameEntityRotation(scene)
+function GameEntityTest:testRotate(scene)
 
     --[[setup]]
     local object = self:createEntity(scene, "test")
@@ -366,9 +363,12 @@ function GameEntityTest:testGameEntityRotation(scene)
     object:rotate(-360)
     assertEqual(object.transform.rotation, 50)
     assertEqual(object.globalRotation, 50)
+end
 
+function GameEntityTest:testRotateTo(scene)
 
-    --[[GameObject.rotate]]
+    local object = self:createEntity(scene, "test")
+
     object:rotateTo(0)
     assertEqual(object.transform.rotation, 0)
     assertEqual(object.globalRotation, 0)
@@ -391,7 +391,7 @@ function GameEntityTest:testGameEntityRotation(scene)
 
 end
 
-function GameEntityTest:testGameEntityChildRotation(scene)
+function GameEntityTest:testChildRotate(scene)
 
     --[[setup]]
     local object = self:createEntity(scene, "test")
@@ -443,7 +443,31 @@ function GameEntityTest:testGameEntityChildRotation(scene)
     child:rotateTo(-361)
     assertEqual(child.transform.rotation, 359)
     assertEqual(child.globalRotation, 359)
-
 end
+
+function GameEntityTest:testRemoveChild(scene)
+
+    local object = self:createEntity(scene, "test")
+    local child = self:createEntity(scene, "test child", nil, object)
+    local grandchild = self:createEntity(scene, "test child", nil, child)
+
+    object:removeChild(child)
+    assertEqual(helpers.searchTreeDepth(object.children, object), nil)
+    assertEqual(helpers.searchTreeDepth(object.children, grandchild), nil)
+
+    object:addChild(child)
+    object:removeChild(child, false) --don't remove grandchild
+    assertEqual(helpers.searchTreeDepth(object.children, object), nil)
+    assertEqual(helpers.searchTreeDepth(object.children, grandchild), 1)
+
+    object:removeChild(self:createEntity(scene, "anonymous"))
+    assertEqual(helpers.searchTreeDepth(object.children, grandchild), 1)
+
+    --edge case, testing removing an object from itself
+    child = self:createEntity(scene, "test child", nil, object)
+    child:removeChild(child)
+    assertEqual(helpers.searchTreeDepth(object.children, child), 1)
+end
+
 
 return GameEntityTest
